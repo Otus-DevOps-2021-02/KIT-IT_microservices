@@ -1,0 +1,6 @@
+REPOSITORY              TAG       IMAGE ID       CREATED              SIZE
+kitit/ubuntu-tmp-file   latest    bffe26ba700d   About a minute ago   63.1MB
+ubuntu                  18.04     7d0d8fa37224   3 days ago           63.1MB
+hello-world             latest    d1165f221234   3 months ago         13.3kB
+
+Инспекция контейнера отличается от инспекции образа в том, что у контейнера есть состояние.
