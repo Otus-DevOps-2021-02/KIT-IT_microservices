@@ -692,3 +692,6 @@ src_post_db_1   docker-entrypoint.sh mongod   Up      27017/tcp
 src_ui_1        puma                          Up      0.0.0.0:9292->9292/tcp,:::9292->9292/tcp
 
 Apllication is working!
+
+Для задания имя проекта воспользовался ссылкой на stackoverflow.
+https://stackoverflow.com/questions/44924082/set-project-name-in-docker-compose-file
