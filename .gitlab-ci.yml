@@ -4,18 +4,15 @@ stages:
   - deploy
 
 variables:
-  DATABASE_URL: 'mongodb://mongo/user_posts'
+ DATABASE_URL: 'mongodb://mongo/user_posts'
+before_script:
+- cd reddit
+- bundle install
 
 build_job:
   stage: build
   script:
     - echo 'Building'
-
-before_script:
-  - cd reddit
-  - apt-get install ruby ruby-dev
-  - apt-get install rubygems
-  - bundle install
 
 test_unit_job:
   stage: test
