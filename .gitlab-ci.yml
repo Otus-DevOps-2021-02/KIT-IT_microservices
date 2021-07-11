@@ -13,6 +13,8 @@ build_job:
 
 before_script:
   - cd reddit
+  - apt-get install ruby ruby-dev
+  - apt-get install rubygems
   - bundle install
 
 test_unit_job:
