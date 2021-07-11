@@ -1027,3 +1027,8 @@ production.
 git commit -am '#4 add logout button to profile page'
 git tag 2.4.10
 git push gitlab gitlab-ci-1 --tags
+
+Gitlab CI позволяет определить динамические окружения. Эта мощная
+функциональность позволяет вам иметь выделенный стенд для, например,
+каждой feature-ветки в git.
+Определяются динамические окружения с помощь переменных, доступных в .gitlab-ci.yml .
