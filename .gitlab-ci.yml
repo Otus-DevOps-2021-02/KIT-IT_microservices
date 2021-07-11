@@ -6,15 +6,14 @@ stages:
 variables:
   DATABASE_URL: 'mongodb://mongo/user_posts'
 
-before_script:
-  - cd reddit
-  - gem install boundler
-  - bundle install
-
 build_job:
   stage: build
   script:
     - echo 'Building'
+
+before_script:
+  - cd reddit
+  - bundle install
 
 test_unit_job:
   stage: test
