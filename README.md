@@ -966,3 +966,29 @@ script:
 
 В описании pipeline вы добавили вызов теста в файле simpletest.rb .
 Нужно создать его в папке reddit
+require_relative './app'
+require 'test/unit'
+require 'rack/test'
+
+set :environment, :test
+
+class MyAppTest < Test::Unit::TestCase
+  include Rack::Test::Methods
+
+  def app
+    Sinatra::Application
+  end
+
+  def test_get_request
+    get '/'
+    assert last_response.ok?
+  end
+end
+
+Последним шагом вам нужно добавить библиотеку
+rack-test для
+тестирования в файл reddit/Gemfile :
+gem 'rack-test'
+
+Запушьте код в GitLab. Убедитесь, что теперь test_unit_job гоняет
+тесты:
