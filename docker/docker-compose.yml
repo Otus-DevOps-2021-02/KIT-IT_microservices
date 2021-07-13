@@ -1,0 +1,103 @@
+
+version: '3.3'
+services:
+  post_db:
+    image: mongo:${MONGO_VERSION}
+    volumes:
+      - post_db:/data/db
+    networks:
+      back-network:
+        aliases:
+          - post_db
+          - comment_db
+
+  ui:
+    build: ./ui
+    image: ${USERNAME_DOCKERHUB}/${UI_VERSION}
+    ports:
+      - ${UI_PORT}
+    networks:
+      - front-network
+    depends_on:
+      - post
+      - comment
+
+  post:
+    build: ./post-py
+    image: ${USERNAME_DOCKERHUB}/post:2.0
+    networks:
+      - back-network
+      - front-network
+    depends_on:
+      - post_db
+
+  comment:
+    build: ./comment
+    image: ${USERNAME_DOCKERHUB}/comment:1.0
+    networks:
+      - back-network
+      - front-network
+    depends_on:
+      - post_db
+
+  prometheus:
+    image: ${USERNAME_DOCKERHUB}/prometheus
+    ports:
+      - '9090:9090'
+    volumes:
+      - prometheus_data:/prometheus
+    command: # Передаем доп параметры в командной строке
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention=1d' # Задаем время хранения метрик в 1 день
+    networks:
+      - back-network
+      - front-network
+
+  node-exporter:
+    image: prom/node-exporter:v0.15.2
+    user: root
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.ignored-mount-points="^/(sys|proc|dev|host|etc)($$|/)"'
+    networks:
+      - back-network
+      - front-network
+    depends_on:
+      - post_db
+
+  mongodb_exporter:
+    image: ${USERNAME_DOCKERHUB}/mongodb_exporter
+    command:
+      - '--collect.database'
+      - '--collect.collection'
+      - '--collect.topmetrics'
+      - '--collect.indexusage'
+      - '--collect.connpoolstats'
+      - '--mongodb.uri=mongodb://mongo_db:27017'
+    networks:
+      - back-network
+      - front-network
+    depends_on:
+      - post_db
+
+volumes:
+  post_db:
+  prometheus_data:
+
+networks:
+  back-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.2.0/24
+  front-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.1.0/24
