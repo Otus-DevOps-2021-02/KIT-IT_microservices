@@ -2641,3 +2641,99 @@ logging-1
 Добавьте метку (label) logging-1 к вашему Pull Request
 После того, как один из преподавателей сделает approve пулл-реквеста,
 ветку с ДЗ можно смерджить и закрыть PR.
+
+docker push kitit/ui:logging
+docker push kitit/comment:logging
+docker push kitit/post:logging
+-----------------------
+HW kubernetes-1
+-----------------------
+Введение в kubernetes. Фух, финишная прямая по домашкам.
+
+-------
+yc compute instance list
+
+yc compute instance create \
+  --name kubernode1 \
+  --zone ru-central1-a \
+  --network-interface subnet-name=default-ru-central1-a,nat-ip-version=ipv4 \
+  --create-boot-disk image-folder-id=standard-images,image-family=ubuntu-1804-lts,size=50 \
+  --memory 4 \
+  --ssh-key ~/.ssh/id_rsa.pub
+
+- index: "0"
+  mac_address: d0:0d:2c:4e:8e:75
+  subnet_id: e9b4uf3p0hsf3ck1glap
+  primary_v4_address:
+    address: 10.128.0.5
+    one_to_one_nat:
+      address: 178.154.241.60
+      ip_version: IPV4
+
+
+
+------
+Install k8s
+
+    Update the apt package index and install packages needed to use the Kubernetes apt repository:
+
+    sudo apt-get update
+    sudo apt-get install -y apt-transport-https ca-certificates curl
+
+    Download the Google Cloud public signing key:
+
+    sudo curl -fsSLo /usr/share/keyrings/kubernetes-archive-keyring.gpg https://packages.cloud.google.com/apt/doc/apt-key.gpg
+
+    Add the Kubernetes apt repository:
+
+    echo "deb [signed-by=/usr/share/keyrings/kubernetes-archive-keyring.gpg] https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
+
+    Update apt package index, install kubelet, kubeadm and kubectl, and pin their version:
+
+    sudo apt-get update
+    sudo apt-get install -y kubelet kubeadm kubectl
+    sudo apt-mark hold kubelet kubeadm kubectl
+
+The kubelet is now restarting every few seconds, as it waits in a crashloop for kubeadm to tell it what to do
+
+sudo kubeadm init --apiserver-cert-extra-sans=178.154.241.60 --apiserver-advertise-address=0.0.0.0 --control-plane-endpoint=178.154.241.60 --pod-network-cidr=10.244.0.0/16
+
+docker-machine create \
+  --driver generic \
+  --generic-ip-address=178.154.241.60\
+  --generic-ssh-user yc-user \
+  --generic-ssh-key ~/.ssh/id_rsa \
+  kubernode1
+
+eval $(docker-machine env logging)
+
+Your Kubernetes control-plane has initialized successfully!
+
+To start using your cluster, you need to run the following as a regular user:
+
+  mkdir -p $HOME/.kube
+  sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+  sudo chown $(id -u):$(id -g) $HOME/.kube/config
+
+Alternatively, if you are the root user, you can run:
+
+  export KUBECONFIG=/etc/kubernetes/admin.conf
+
+You should now deploy a pod network to the cluster.
+Run "kubectl apply -f [podnetwork].yaml" with one of the options listed at:
+  https://kubernetes.io/docs/concepts/cluster-administration/addons/
+
+You can now join any number of control-plane nodes by copying certificate authorities
+and service account keys on each node and then running the following as root:
+
+  kubeadm join 178.154.241.60:6443 --token y3ihro.e76jxcmidu2zx7u7 \
+        --discovery-token-ca-cert-hash sha256:07034c4add9bf1be8ed23a538c5b02da6e7225267a07e86ea5964d7a5d2683de \
+        --control-plane
+
+Then you can join any number of worker nodes by running the following on each as root:
+
+kubeadm join 178.154.241.60:6443 --token y3ihro.e76jxcmidu2zx7u7 \
+        --discovery-token-ca-cert-hash sha256:07034c4add9bf1be8ed23a538c5b02da6e7225267a07e86ea5964d7a5d2683de
+
+NAME         STATUS   ROLES                  AGE   VERSION
+kubernode1   Ready    control-plane,master   17m   v1.21.3
