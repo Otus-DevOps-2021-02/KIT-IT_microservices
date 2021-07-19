@@ -1,4 +1,3 @@
-
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -12,14 +11,14 @@ spec:
       app: reddit
       component: mongo
   policyTypes:
-  - Ingress
+    - Ingress
   ingress:
-  - from:
-    - podSelector:
-        matchLabels:
-          app: reddit
-          component: comment
-    - podSelector:
-        matchLabels:
-          app: reddit
-          component: post
+    - from:
+        - podSelector:
+            matchLabels:
+              app: reddit
+              component: comment
+        - podSelector:
+            matchLabels:
+              app: reddit
+              component: post

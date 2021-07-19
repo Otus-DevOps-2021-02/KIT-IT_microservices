@@ -2,7 +2,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: comment-deployment
+  name: comment
   labels:
     app: reddit
     component: comment
@@ -20,7 +20,7 @@ spec:
         component: comment
     spec:
       containers:
-      - image: kirillkotovsky/comment
+      - image: kipspm/comment:logging
         name: comment
         env:
         - name: COMMENT_DATABASE_HOST
