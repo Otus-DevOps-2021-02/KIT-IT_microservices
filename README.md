@@ -2776,3 +2776,109 @@ kubectl apply -f ./kubernetes/reddit/dev-namespace.yml
 kubectl apply -f ./kubernetes/reddit/ -n dev
 
 178.154.230.115:32092
+-----------------------
+HW kubernetes-3
+-----------------------
+План
+Ingress Controller
+Ingress
+Secret
+TLS
+LoadBalancer Service
+Network Policies
+PersistentVolumes
+PersistentVolumeClaims
+
+Service
+Service - определяет конечные узлы доступа (Endpoint'ы):
+Селекторные сервисы (k8s сам находит POD-ы по label'ам)
+Безселекторные сервисы (мы вручную описываем конкретные endpoint'ы)
+И способ коммуникации с ними (тип (type) сервиса):
+CluserIP - дойти до сервиса можно только изнутри кластера
+nodePort - клиент снаружи кластера приходит на опубликованный порт
+LoadBalancer - клиент приходит на облачный (aws elb, Google gclb) ресурс
+балансировки
+ExternalName - внешний ресурс по отношению к кластеру
+
+Вспомним, как выглядели Service'ы
+post-service.yml ссылка на gist
+apiVersion: v1
+kind: Service
+metadata:
+name: post
+labels:
+app: reddit
+component: post
+spec:
+ports:
+- port: 5000
+protocol: TCP
+targetPort: 5000
+selector:
+app: reddit
+component: post
+Это селекторный сервис типа ClusterIP (тип не указан, т. к. этот тип по-
+умолчанию)
+
+ClusterIP - это виртуальный (в реальности нет интерфейса, pod'a или
+машины с таким адресом) IP-адрес из диапазона адресов для работы
+внутри, скрывающий за собой IP-адреса реальных POD-ов. Сервису любого
+типа (кроме ExternalName) назначается этот IP-адрес.
+
+Kube-dns
+Отметим, что Service - это лишь абстракция и описание того, как
+получить доступ к сервису. Но опирается она на реальные механизмы и
+объекты: DNS-сервер, балансировщики, iptables.
+Для того, чтобы дойти до сервиса, нам нужно узнать его адрес по имени.
+Kubernetes не имеет своего собественного DNS-сервера для разрешения
+имен. Поэтому используется плагин kube-dns (это тоже Pod).
+Его задачи:
+Ходить в API Kubernetes'a и отслеживать Service-объекты
+Заносить DNS-записи о Service'ах в собственную базу
+Предоставлять DNS-сервис для разрешения имен в IP-адреса (как
+внутренних, так и внешних)
+
+Можете убедиться, что при отключенном kube-dns сервисе связность
+между компонентами reddit-app пропадает и он перестанет работать.
+1) Проскейлим в 0 сервис, который следит, чтобы dns-kube подов всегда
+хватало ( ссылка на gist )
+kubectl scale deployment --replicas 0 -n kube-system kube-dns-autoscaler
+$ kubectl scale deployment --replicas 0 -n kube-system kube-dns-autoscaler
+2) Проскейлим в 0 сам kube-dns ( ссылка на gist )
+$ kubectl scale deployment --replicas 0 -n kube-system kube-dns
+
+kubectl exec -ti -n dev <имя любого pod-а> ping comment
+
+Как уже говорилось, ClusterIP - виртуальный и не принадлежит ни одной
+реальной физической сущности. Его чтением и дальнейшимми действиями с
+пакетами, принадлежащими ему, занимается в нашем случае iptables,
+который настраивается утилитой kube-proxy (забирающей инфу с API-
+сервера).
+Сам kube-proxy можно настроить на прием трафика, но это устаревшее
+поведение и не рекомендуется его применять.
+На любой из нод кластера можете посмотреть эти правила IPTABLES (это
+не задание).
+
+kubectl get service -n dev --selector component=ui
+NAME   TYPE           CLUSTER-IP    EXTERNAL-IP       PORT(S)        AGE
+ui     LoadBalancer   10.96.236.4   178.154.204.150   80:32092/TCP   64m
+
+LoadBalancer
+Балансировка с помощью Service типа LoadBalancing имеет ряд
+недостатков:
+Нельзя управлять с помощью http URI (L7-балансировщика)
+Используются только облачные балансировщики (AWS, GCP)
+Нет гибких правил работы с трафиком
+Избавляем бизнес от ИТ-зависимости
+25 / 65Ingress
+Для более удобного управления входящим снаружи трафиком и
+решения недостатков LoadBalancer можно использовать другой объект
+Kubernetes - Ingress
+Ingress - это набор правил внутри кластера Kuberntes, предназначенных
+для того, чтобы входящие подключения могли достичь сервисов (Services)
+Сами по себе Ingress'ы это просто правила. Для их применения нужен
+Ingress Controller.
+
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v0.34.1/deploy/static/provider/cloud/deploy.yaml
+
+https://cloud.yandex.ru/docs/managed-kubernetes/solutions/ingress-cert-manager
