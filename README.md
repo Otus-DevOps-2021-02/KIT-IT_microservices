@@ -2737,3 +2737,42 @@ kubeadm join 178.154.241.60:6443 --token y3ihro.e76jxcmidu2zx7u7 \
 
 NAME         STATUS   ROLES                  AGE   VERSION
 kubernode1   Ready    control-plane,master   17m   v1.21.3
+-----------------------
+HW kubernetes-2
+-----------------------
+План
+Развернуть локальное окружение для работы с Kubernetes
+Развернуть Kubernetes в Yandex Cloud
+Запустить reddit в Kubernete
+
+Разворачиваем Kubernetes локально
+Для дальнейшней работы нам нужно подготовить локальное
+окружение, которое будет состоять из:
+.
+kubectl - фактически, главной утилиты для работы с Kubernets API (все,
+что делает kubectl, можно сделать с помощью HTTP-запросов к API
+k8s)
+. Директории ~/.kube - содержит служебную информацию для kubectl
+(конфиги, кеши, схемы API)
+. minikube - утилиты для разворачивания локальной инсталяции
+Kubernetes
+
+Включили поддержку виртуализации. Установили minikube
+Запустим наш Minikube-кластер
+minikube start --kubernetes-version 1.19.7
+
+yc managed-kubernetes cluster get-credentials cat8m8agv7llar820c3v --external
+
+Запустим наше приложение в K8s
+Создадим dev namespace
+1
+2
+kubectl apply -f ./kubernetes/reddit/dev-namespace.yml
+3
+Задеплоим все компоненты приложения в namespace dev:
+1
+2
+3
+kubectl apply -f ./kubernetes/reddit/ -n dev
+
+178.154.230.115:32092
