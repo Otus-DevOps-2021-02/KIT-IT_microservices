@@ -276,3 +276,422 @@ docker run -d --network=reddit -p 9292:9292 <your-dockerhub-login>/ui:2.0
 
 That's ALL, my guy!
 -----------------------
+HW docker-4
+-----------------------
+Работа с сетями в Docker
+Использование docker-compose
+
+Подключаемся к ранее созданному docker host’у
+docker-machine ls                                                                               ✔
+NAME          ACTIVE   DRIVER    STATE     URL                          SWARM   DOCKER     ERRORS
+docker-host   -        generic   Running   tcp://178.154.229.240:2376           v20.10.7
+
+eval $(docker-machine env docker-host)
+
+Разобраться с работой сети в Docker
+• none
+• host
+• bridge
+
+Запустим контейнер с использованием none-драйвера.
+В качестве образа используем joffotron/docker-net-tools
+Делаем это для экономии сил и времени, т.к. в его состав уже
+входят необходимые утилиты для работы с сетью: пакеты bind-
+tools, net-tools и curl.
+Контейнер запустится, выполнить команду `ifconfig` и будет
+удален (флаг --rm)
+
+docker run -ti --rm --network none joffotron/docker-net-tools -c ifconfig
+Unable to find image 'joffotron/docker-net-tools:latest' locally
+latest: Pulling from joffotron/docker-net-tools
+3690ec4760f9: Pull complete
+0905b79e95dc: Pull complete
+Digest: sha256:5752abdc4351a75e9daec681c1a6babfec03b317b273fc56f953592e6218d5b5
+Status: Downloaded newer image for joffotron/docker-net-tools:latest
+lo        Link encap:Local Loopback
+          inet addr:127.0.0.1  Mask:255.0.0.0
+          UP LOOPBACK RUNNING  MTU:65536  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:1000
+          RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
+
+В результате, видим:
+• что внутри контейнера из сетевых интерфейсов
+существует только loopback.
+• сетевой стек самого контейнера работает (ping localhost),
+но без возможности контактировать с внешним миром.
+• Значит, можно даже запускать сетевые сервисы внутри
+такого контейнера, но лишь для локальных
+экспериментов (тестирование, контейнеры для
+выполнения разовых задач и т.д.)
+
+Запустим контейнер в сетевом пространстве docker-хоста
+docker run -ti --rm --network host joffotron/docker-net-tools -c ifconfig
+
+docker0   Link encap:Ethernet  HWaddr 02:42:7A:E6:DF:54
+          inet addr:172.17.0.1  Bcast:172.17.255.255  Mask:255.255.0.0
+          UP BROADCAST MULTICAST  MTU:1500  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0
+          RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
+
+eth0      Link encap:Ethernet  HWaddr D0:0D:10:67:3E:DD
+          inet addr:10.128.0.21  Bcast:10.128.0.255  Mask:255.255.255.0
+          inet6 addr: fe80::d20d:10ff:fe67:3edd%32541/64 Scope:Link
+          UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
+          RX packets:395204 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:316302 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:1000
+          RX bytes:156901038 (149.6 MiB)  TX bytes:32173742 (30.6 MiB)
+
+lo        Link encap:Local Loopback
+          inet addr:127.0.0.1  Mask:255.0.0.0
+          inet6 addr: ::1%32541/128 Scope:Host
+          UP LOOPBACK RUNNING  MTU:65536  Metric:1
+          RX packets:318 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:318 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:1000
+          RX bytes:29618 (28.9 KiB)  TX bytes:29618 (28.9 KiB)
+
+docker-machine ssh docker-host ifconfig
+bash: ifconfig: command not found
+exit status 127
+
+docker-machine ssh docker-host sudo apt install -y net-tools
+
+docker-machine ssh docker-host ifconfig
+
+docker0: flags=4099<UP,BROADCAST,MULTICAST>  mtu 1500
+        inet 172.17.0.1  netmask 255.255.0.0  broadcast 172.17.255.255
+        ether 02:42:7a:e6:df:54  txqueuelen 0  (Ethernet)
+        RX packets 0  bytes 0 (0.0 B)
+        RX errors 0  dropped 0  overruns 0  frame 0
+        TX packets 0  bytes 0 (0.0 B)
+        TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+
+eth0: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500
+        inet 10.128.0.21  netmask 255.255.255.0  broadcast 10.128.0.255
+        inet6 fe80::d20d:10ff:fe67:3edd  prefixlen 64  scopeid 0x20<link>
+        ether d0:0d:10:67:3e:dd  txqueuelen 1000  (Ethernet)
+        RX packets 395629  bytes 157165813 (157.1 MB)
+        RX errors 0  dropped 0  overruns 0  frame 0
+        TX packets 316724  bytes 32237810 (32.2 MB)
+        TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+
+lo: flags=73<UP,LOOPBACK,RUNNING>  mtu 65536
+        inet 127.0.0.1  netmask 255.0.0.0
+        inet6 ::1  prefixlen 128  scopeid 0x10<host>
+        loop  txqueuelen 1000  (Local Loopback)
+        RX packets 328  bytes 30568 (30.5 KB)
+        RX errors 0  dropped 0  overruns 0  frame 0
+        TX packets 328  bytes 30568 (30.5 KB)
+        TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+
+docker run --network host -d nginx                                                           ✔
+Unable to find image 'nginx:latest' locally
+latest: Pulling from library/nginx
+b4d181a07f80: Pull complete
+edb81c9bc1f5: Pull complete
+b21fed559b9f: Pull complete
+03e6a2452751: Pull complete
+b82f7f888feb: Pull complete
+5430e98eba64: Pull complete
+Digest: sha256:47ae43cdfc7064d28800bc42e79a429540c7c80168e8c8952778c0d5af1c09db
+Status: Downloaded newer image for nginx:latest
+1f27f322bc018c5262453d5aeb6afef17c78f2fe79d2fcf94cd68e0679922b0f
+
+docker ps                                                                              ✔  11s
+CONTAINER ID   IMAGE     COMMAND                  CREATED         STATUS         PORTS     NAMES
+1f27f322bc01   nginx     "/docker-entrypoint.…"   6 seconds ago   Up 3 seconds             keen_chebyshev
+
+docker run --network host -d nginx                                                           ✔
+f0b5e08ddd3d00ef2895e4ed1b4281eecef723208f8e04574dfd7c7403de75ae
+
+docker run --network host -d nginx                                                           ✔
+c0baf347875d3e6934445dd50b1099f65a1d7fa675213cd1b1dc64d9e6ce2939
+
+docker ps                                                                                    ✔
+CONTAINER ID   IMAGE     COMMAND                  CREATED          STATUS          PORTS     NAMES
+1f27f322bc01   nginx     "/docker-entrypoint.…"   21 seconds ago   Up 18 seconds             keen_chebyshev
+
+docker kill $(docker ps -q)                                                                  ✔
+1f27f322bc01
+
+ssh yc-user@178.154.229.240
+yc-user@docker-host:~$
+
+sudo ln -s /var/run/docker/netns /var/run/netns
+sudo ip netns
+default
+
+docker run --network none -d nginx                                                 ✔
+f46594cfd027d72617ac67ad03ba923471aaa276acc41b5de1fb19113de7d71a
+
+docker run --network none -d nginx                                        125 ✘  4s
+4f53cc9eb42bb2c856f10aa4e1f2fb0ec1e5cfb2e8be45084166013067466ad5
+
+ssh yc-user@178.154.229.240
+
+yc-user@docker-host:~$ sudo ip netns
+618e6fc7fb0e
+default
+
+yc-user@docker-host:~$ sudo ip netns exec 618e6fc7fb0e ifconfig
+lo: flags=73<UP,LOOPBACK,RUNNING>  mtu 65536
+        inet 127.0.0.1  netmask 255.0.0.0
+        loop  txqueuelen 1000  (Local Loopback)
+        RX packets 0  bytes 0 (0.0 B)
+        RX errors 0  dropped 0  overruns 0  frame 0
+        TX packets 0  bytes 0 (0.0 B)
+        TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+
+Создадим bridge-сеть в docker (флаг --driver указывать не
+обязательно, т.к. по-умолчанию используется bridg
+
+docker network create reddit --driver bridge                                       ✔
+7c12398ee3064e28e07452afd2aea2640479bdde20cd0133fc06327021769229
+
+docker  network ls                                                                  ✔
+NETWORK ID     NAME      DRIVER    SCOPE
+b60efe00f607   bridge    bridge    local
+5e9a2608ed23   host      host      local
+87834e203c28   none      null      local
+7c12398ee306   reddit    bridge    local
+
+Запустим наш проект reddit с использованием bridge-сети
+docker run -d --network=reddit mongo:latest
+docker run -d --network=reddit kitit/post:1.0
+docker run -d --network=reddit kitit/comment:1.0
+docker run -d --network=reddit -p 9292:9292 kitit/ui:1.0
+
+Все конейнеры поднялись. Can't show blog posts, some problems with the post service. Refresh?
+На самом деле, наши сервисы ссылаются друг на друга по dns-
+именам, прописанным в ENV-переменных (см Dockerfile). В текущей
+инсталляции встроенный DNS docker не знает ничего об этих
+именах.
+Решением проблемы будет присвоение контейнерам имен или
+сетевых алиасов при старте:
+--name <name> (можно задать только 1 имя)
+--network-alias <alias-name> (можно задать множество алиасов)
+
+docker kill $(docker ps -q)
+b2208736b217
+b31b68348f47
+18f207b38a50
+0b2ae089919c
+
+docker run -d --network=reddit --network-alias=post_db --network-alias=comment_db mongo:latest
+docker run -d --network=reddit --network-alias=post kitit/post:1.0
+docker run -d --network=reddit --network-alias=comment  kitit/comment:1.0
+docker run -d --network=reddit -p 9292:9292 kitit/ui:1.0
+
+Все конейнеры поднялись. Приложение заработало корректно.
+
+Bridge network driver
+Давайте запустим наш проект в 2-х bridge сетях. Так , чтобы сервис ui
+не имел
+доступа к базе данных в соответствии со схемой ниже.
+
+docker kill $(docker ps -q)
+08b2560e48d1
+4dcb7a5b4b7d
+ed2c7008e5d7
+22bbb8300b08
+
+docker network create back_net --subnet=10.0.2.0/24
+docker network create front_net --subnet=10.0.1.0/24
+NETWORK ID     NAME        DRIVER    SCOPE
+18f4fb83959e   back_net    bridge    local
+b60efe00f607   bridge      bridge    local
+2bda1ec86967   front_net   bridge    local
+5e9a2608ed23   host        host      local
+87834e203c28   none        null      local
+7c12398ee306   reddit      bridge    local
+
+docker run -d --network=front_net -p 9292:9292 --name ui  kitit/ui:1.0
+docker run -d --network=back_net --name comment  kitit/comment:1.0
+docker run -d --network=back_net --name post  kitit/post:1.0
+docker run -d --network=back_net --name mongo_db --network-alias=post_db --network-alias=comment_db mongo:latest
+
+Что пошло не так?
+Docker при инициализации контейнера может подключить к нему только 1
+сеть.
+При этом контейнеры из соседних сетей не будут доступны как в DNS, так
+и для взаимодействия по сети.
+Поэтому нужно поместить контейнеры post и comment в обе сети.
+Дополнительные сети подключаются командой:
+> docker network connect <network> <container>
+
+Подключим контейнеры ко второй сети
+docker network connect front_net post
+docker network connect front_net comment
+Приложение заработало корректно. Теперь понятно.
+
+Давайте посмотрим как выглядит сетевой стек Linux в
+текущий момент, опираясь на схему из предыдущего
+слайда:
+1) Зайдите по ssh на docker-host и установите пакет bridge-utils
+> docker-machine ssh docker-host
+> sudo apt-get update && sudo apt-get install bridge-utils
+2) Выполните:
+> docker network ls
+3) Найдите ID сетей, созданных в рамках проекта.
+4) Выполните :
+> ifconfig | grep br
+br-18f4fb83959e: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500
+        inet 10.0.2.1  netmask 255.255.255.0  broadcast 10.0.2.255
+br-2bda1ec86967: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500
+        inet 10.0.1.1  netmask 255.255.255.0  broadcast 10.0.1.255
+br-7c12398ee306: flags=4099<UP,BROADCAST,MULTICAST>  mtu 1500
+        inet 172.18.0.1  netmask 255.255.0.0  broadcast 172.18.255.255
+        inet 172.17.0.1  netmask 255.255.0.0  broadcast 172.17.255.255
+        inet 10.128.0.21  netmask 255.255.255.0  broadcast 10.128.0.255
+5) Найдите bridge-интерфейсы для каждой из сетей. Просмотрите
+информацию о каждом.
+6) Выберите любой из bridge-интерфейсов и выполните команду. Ниже
+пример вывода:
+yc-user@docker-host:~$ brctl show br-18f4fb83959e
+bridge name     bridge id               STP enabled     interfaces
+br-18f4fb83959e         8000.0242cb13b558       no              veth77e2c39
+                                                        vethb40b885
+                                                        vethb5a2540
+Отображаемые veth-интерфейсы - это те части виртуальных пар
+интерфейсов (2 на схеме), которые лежат в сетевом пространстве хоста и
+также отображаются в ifconfig. Вторые их части лежат внутри контейнеров
+7) Давайте посмотрим как выглядит iptables. Выполним:
+> sudo iptables -nL -t nat (флаг -v даст чуть больше инфы)
+Chain PREROUTING (policy ACCEPT)
+target     prot opt source               destination
+DOCKER     all  --  0.0.0.0/0            0.0.0.0/0            ADDRTYPE match dst-type LOCAL
+
+Chain INPUT (policy ACCEPT)
+target     prot opt source               destination
+
+Chain OUTPUT (policy ACCEPT)
+target     prot opt source               destination
+DOCKER     all  --  0.0.0.0/0           !127.0.0.0/8          ADDRTYPE match dst-type LOCAL
+
+Chain POSTROUTING (policy ACCEPT)
+target     prot opt source               destination
+MASQUERADE  all  --  10.0.1.0/24          0.0.0.0/0
+MASQUERADE  all  --  10.0.2.0/24          0.0.0.0/0
+MASQUERADE  all  --  172.18.0.0/16        0.0.0.0/0
+MASQUERADE  all  --  172.17.0.0/16        0.0.0.0/0
+MASQUERADE  tcp  --  10.0.1.2             10.0.1.2             tcp dpt:9292
+
+Chain DOCKER (2 references)
+target     prot opt source               destination
+RETURN     all  --  0.0.0.0/0            0.0.0.0/0
+RETURN     all  --  0.0.0.0/0            0.0.0.0/0
+RETURN     all  --  0.0.0.0/0            0.0.0.0/0
+RETURN     all  --  0.0.0.0/0            0.0.0.0/0
+DNAT       tcp  --  0.0.0.0/0            0.0.0.0/0            tcp dpt:9292 to:10.0.1.2:9292
+Обратите внимание на цепочку POSTROUTING. В ней вы увидите нечто
+подобное
+Chain POSTROUTING (policy ACCEPT)
+target
+prot opt source
+!MASQUERADE all -- 10.0.2.0/24
+!MASQUERADE all -- 172.18.0.0/16
+!MASQUERADE all -- 172.17.0.0/16
+!MASQUERADE tcp -- 172.18.0.2
+destination
+0.0.0.0/0
+0.0.0.0/0
+0.0.0.0/0
+172.18.0.2
+tcp dpt:9292
+8) В ходе работы у нас была необходимость публикации порта контейнера
+UI (9292) для доступа к нему снаружи.
+Давайте посмотрим, что Docker при этом сделал. Снова взгляните в iptables
+на таблицу nat.
+Обратите внимание на цепочку DOCKER и правила DNAT в ней.
+DNAT
+tcp
+--
+0.0.0.0/0
+0.0.0.0/0
+tcp dpt:9292 to:172.18.0.2:9292
+Они отвечают за перенаправление трафика на адреса уже конкретных
+контейнеров.
+9) Также выполните:
+> ps ax | grep docker-proxy
+Вы должны увидеть хотя бы 1 запущенный процесс docker-proxy.
+Этот процесс в данный момент слушает сетевой tcp-порт 9292.
+ 9437 pts/0    S+     0:00 grep --color=auto docker-proxy
+31693 ?        Sl     0:00 /usr/bin/docker-proxy -proto tcp -host-ip 0.0.0.0 -host-port 9292 -container-ip 10.0.1.2 -container-port 9292
+31700 ?        Sl     0:00 /usr/bin/docker-proxy -proto tcp -host-ip :: -host-port 9292 -container-ip 10.0.1.2 -container-port 9292
+
+Docker-compose
+Проблемы
+• Одно приложение состоит из множества контейнеров/
+сервисов
+• Один контейнер зависит от другого
+• Порядок запуска имеет значение
+• docker build/run/create ... (долго и много)
+• Отдельная утилита
+• Декларативное описание docker-инфраструктуры в YAML-
+формате
+• Управление многоконтейнерными приложениями
+• Установить docker-compose на локальную
+машину
+• Собрать образы приложения reddit с помощью
+docker-compose
+• Запустить приложение reddit с помощью docker-
+compose
+
+Установка docker-
+compose
+• MacOS - идет в docker-бандле
+(https://docs.docker.com/docker-for-mac/install/)
+• Windows - идет в docker-бандле
+(https://docs.docker.com/docker-for-windows/install/)
+• Linux - (https://docs.docker.com/compose/install/#install-
+compose)
+либо
+> pip install docker-compose
+
+/usr/bin/python3.8 -m pip install --upgrade pip
+
+В директории с проектом reddit-microservices, папка
+src, из предыдущего домашнего задания создайте
+файл docker-compose.yml
+Содержимое по ссылке скопируйте в docker-
+compose.yml, ознакомьтесь с описанием нашего
+проекта при помощи compose
+
+touch docker-compose.yml
+
+Переменные окружения в docker-compose
+Отметим, что docker-compose поддерживает интерполяцию
+(подстановку) переменных окружения.
+В данном случае это переменная USERNAME.
+Поэтому перед запуском необходимо экспортировать
+значения данных переменных окружения.
+Остановим контейнеры, запущенные на предыдущих шагах
+> docker kill $(docker ps -q)
+f98bf1988f6a
+762261dc0d39
+48e7c49f18cf
+c90315c30900
+Выполните:
+> export USERNAME=kitit
+> docker-compose up -d
+Creating src_post_db_1 ... done
+Creating src_post_1    ... done
+Creating src_comment_1 ... done
+Creating src_ui_1      ... done
+> docker-compose ps
+    Name                  Command             State                    Ports
+----------------------------------------------------------------------------------------------
+src_comment_1   puma                          Up
+src_post_1      python3 post_app.py           Up
+src_post_db_1   docker-entrypoint.sh mongod   Up      27017/tcp
+src_ui_1        puma                          Up      0.0.0.0:9292->9292/tcp,:::9292->9292/tcp
+
+Apllication is working!
+
+Для задания имя проекта воспользовался ссылкой на stackoverflow.
+https://stackoverflow.com/questions/44924082/set-project-name-in-docker-compose-file
