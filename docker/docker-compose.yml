@@ -2,9 +2,13 @@
 version: '3.3'
 services:
   post_db:
+    env_file:
+      - .env
     image: mongo:${MONGO_VERSION}
     volumes:
       - post_db:/data/db
+    environment:
+      - ZIPKIN_ENABLED=${ZIPKIN_ENABLED}
     networks:
       back-network:
         aliases:
@@ -12,8 +16,12 @@ services:
           - comment_db
 
   ui:
+    env_file:
+      - .env
     build: ./ui
-    image: ${USERNAME_DOCKERHUB}/${UI_VERSION}
+    image: ${USERNAME_DOCKERHUB}/ui:${IMAGE_LOGGING_TAG}
+    environment:
+      - ZIPKIN_ENABLED=${ZIPKIN_ENABLED}
     ports:
       - ${UI_PORT}
     networks:
@@ -21,19 +29,41 @@ services:
     depends_on:
       - post
       - comment
+    logging:
+      driver: "fluentd"
+      options:
+        fluentd-address: localhost:24224
+        tag: service.ui
 
   post:
+    env_file:
+      - .env
     build: ./post-py
-    image: ${USERNAME_DOCKERHUB}/post:2.0
+    image: ${USERNAME_DOCKERHUB}/post:${IMAGE_LOGGING_TAG}
+    environment:
+      - POST_DATABASE_HOST=post_db
+      - POST_DATABASE=posts
+      - ZIPKIN_ENABLED=${ZIPKIN_ENABLED}
     networks:
       - back-network
       - front-network
     depends_on:
       - post_db
+    ports:
+      - "5000:5000"
+    logging:
+      driver: "fluentd"
+      options:
+        fluentd-address: localhost:24224
+        tag: service.post
 
   comment:
+    env_file:
+      - .env
     build: ./comment
-    image: ${USERNAME_DOCKERHUB}/comment:1.0
+    image: ${USERNAME_DOCKERHUB}/comment:${IMAGE_LOGGING_TAG}
+    environment:
+      - ZIPKIN_ENABLED=${ZIPKIN_ENABLED}
     networks:
       - back-network
       - front-network

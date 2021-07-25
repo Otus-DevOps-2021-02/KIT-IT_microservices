@@ -1954,3 +1954,690 @@ Creating kitit_alertmanager_1  ... done
 Creating kitit_grafana_1       ... done
 
 Алерты можно посмотреть в веб интерфейсе Prometheus:
+-----------------------
+HW logging-1
+-----------------------
+1. Создание новой ветки
+Создайте новую ветку в вашем репозитории для выполнения данного ДЗ
+и назовите ветку logging-1
+Проверка этого ДЗ производится через подтверждение пулл-реквеста
+одним из преподавателей. После аппрува ветку можно будет смержить
+
+План
+Подготовка окружения
+Логирование Docker-контейнеров
+Сбор неструктурированных логов
+Визуализация логов
+Сбор структурированных логов
+Распределенный трейсинг
+
+2.1. Подготовка окружения - скачивание
+новой ветки reddit
+Код
+микросервисов
+обновился
+для
+добавления
+функционала
+логирования. Новая версия кода доступа по ссылке .
+https://github.com/express42/reddit.git
+Обновите код в директории /src вашего репозитория кодом по ссылке
+выше
+Если вы используете python-alpine в образах, добавьте в /src/post-
+py/Dockerfile установку пакетов gcc и musl-dev
+
+2.2. Подготовка окружения - сборка образов
+с новыми тэгами
+Выполните сборку образов при помощи скриптов docker_build.sh в
+директории каждого сервиса и отправьте их в репозиторий:
+$
+$
+$
+$
+export USER_NAME='kitit'
+cd ./src/ui && bash docker_build.sh && docker push $USER_NAME/ui:logging
+cd ../post-py && bash docker_build.sh && docker push $USER_NAME/post:logging
+cd ../comment && bash docker_build.sh && docker push $USER_NAME/comment:logging
+Обратите внимание (см. docker_build.sh), что в этом ДЗ мы
+используем отдельные теги для контейнеров приложений: :logging
+
+2.3. Подготовка окружения - создание
+docker-machine
+Создайте Docker-хост с именем logging в Yandex.Cloud и настройте
+локальное окружение на работу с ним.
+Вы можете использовать способ создания docker-machine из
+предыдущих ДЗ (через драйвер generic) и пропустить шаги ниже. В
+этом случае добавьте ключ --memory 4 при создании инстанса.
+Ниже инструкция по созданию docker-machine через драйвер yandex-
+cloud (работает только для Ubuntu):
+Установите golang:
+sudo add-apt-repository ppa:longsleep/golang-backports
+sudo apt update
+sudo apt install golang-go
+
+2.3. Подготовка окружения - создание docker-machine (продолжение)
+Установите драйвер для Yandex.Cloud:
+go get -u github.com/yandex-cloud/docker-machine-driver-yandex
+Драйвер установится в $HOME/go/bin . Сделайте любым способом так,
+чтобы драйвер был доступен через PATH .
+Он установился в $HOME/go/bin . Сделайте бинарник доступным через
+$PATH .
+export PATH='/home/user/yandex-cloud/bin:/home/user/yandex-cloud/bin:/home/user/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/home/user/go/bin:'
+Задайте ID вашего каталога в Yandex.Cloud через переменную:
+yc config list
+$ export FOLDER_ID='b1gm5hh9fnrpfqagf33g'
+
+2.3. Подготовка окружения - создание docker-machine (продолжение)
+Создайте docker-machine:
+$ docker-machine create \
+--driver yandex \
+--yandex-image-family "ubuntu-1804-lts" \
+--yandex-platform-id "standard-v1" \
+--yandex-folder-id $FOLDER_ID \
+--yandex-sa-key-file ~/.ssh/id_rsa \
+--yandex-memory "4" \
+logging
+Переключитесь на Docker Engine docker-машины. Затем получите IP-адрес
+машины:
+$ eval $(docker-machine env logging)
+$ docker-machine ip logging
+
+-------
+yc compute instance list
+
+yc compute instance create \
+  --name logging \
+  --zone ru-central1-a \
+  --network-interface subnet-name=default-ru-central1-a,nat-ip-version=ipv4 \
+  --create-boot-disk image-folder-id=standard-images,image-family=ubuntu-1804-lts,size=50 \
+  --memory 4 \
+  --ssh-key ~/.ssh/id_rsa.pub
+
+- index: "0"
+  mac_address: d0:0d:c2:f6:13:5c
+  subnet_id: e9b4uf3p0hsf3ck1glap
+  primary_v4_address:
+    address: 10.128.0.5
+    one_to_one_nat:
+      address: 178.154.240.85
+      ip_version: IPV4
+
+docker-machine create \
+  --driver generic \
+  --generic-ip-address=178.154.240.85\
+  --generic-ssh-user yc-user \
+  --generic-ssh-key ~/.ssh/id_rsa \
+  logging
+
+eval $(docker-machine env logging)
+------
+
+docker-machine ip logging                                                   ✔
+178.154.240.85
+
+Логирование Docker-
+контейнеров
+
+Elastic Stack
+Как упоминалось на лекции, хранить все логи стоит централизованно: на
+одном (нескольких) серверах. В этом ДЗ мы рассмотрим пример системы
+централизованного
+логирования
+на
+примере
+Elastic-стека
+(ранее
+известного как ELK), который включает в себя 3 основных компонента:
+ElasticSearch (TSDB и поисковый движок для хранения данных)
+Logstash (для аггрегации и трансформации данных)
+Kibana (для визуализации)
+Однако для аггрегации логов вместо Logstash мы будем использовать
+Fluentd, таким образом, получая еще одно популярное сочетание этих
+инструментов, получившее название EFK.
+
+3.1. Создание compose-файла для системы
+логирования
+Создайте отдельный compose-файл для нашей системы логирования
+docker/docker-compose-logging.yml ( gist ):
+
+version: '3'
+services:
+  fluentd:
+    image: ${USERNAME}/fluentd
+    ports:
+      - "24224:24224"
+      - "24224:24224/udp"
+
+  elasticsearch:
+    image: elasticsearch:7.4.0
+    environment:
+      - ELASTIC_CLUSTER=false
+      - CLUSTER_NODE_MASTER=true
+      - CLUSTER_MASTER_NODE_NAME=es01
+      - discovery.type=single-node
+    expose:
+      - 9200
+    ports:
+      - "9200:9200"
+
+  kibana:
+    image: kibana:7.4.0
+    ports:
+      - "5601:5601"
+
+3.2. Создание Dockerfile для Fluentd
+Fluentd - инструмент, который может использоваться для отправки,
+аггрегации и преобразования лог-сообщений. Мы будем использовать
+Fluentd для аггрегации (сбора в одном месте) и парсинга логов сервисов
+нашего приложения.
+Создадим образ Fluentd с нужной нам конфигурацией.
+Создайте в вашем проекте microservices директорию logging/fluentd. В
+созданной директории создайте простой Dockerfile со следущим содержимым:
+FROM fluent/fluentd:v0.12
+RUN gem install fluent-plugin-elasticsearch --no-rdoc --no-ri --version 1.9.5
+RUN gem install fluent-plugin-grok-parser --no-rdoc --no-ri --version 1.0.0
+ADD fluent.conf /fluentd/etc
+
+3.3. Создание конфигурации Fluentd
+В
+директории
+logging/fluentd
+создайте
+файл
+конфигурации
+logging/fluentd/fluent.conf ( gist )
+
+<source>
+  @type forward
+  port 24224
+  bind 0.0.0.0
+</source>
+
+<match *.**>
+  @type copy
+  <store>
+    @type elasticsearch
+    host elasticsearch
+    port 9200
+    logstash_format true
+    logstash_prefix fluentd
+    logstash_dateformat %Y%m%d
+    include_tag_key true
+    type_name access_log
+    tag_key @log_name
+    flush_interval 1s
+  </store>
+  <store>
+    @type stdout
+  </store>
+</match>
+
+3.4. Сборка образа Fluentd
+Соберите docker image для fluentd:
+cd logging/fluentd
+docker build -t $USER_NAME/fluentd .
+
+Cбор
+структурированных
+логов
+Структурированные логи
+Логи
+должны
+иметь
+заданную
+(единую)
+структуру
+и
+содержать
+необходимую для нормальной эксплуатации данного сервиса информацию
+о его работе.
+Лог-сообщения также должны иметь понятный для выбранной системы
+логирования формат, чтобы избежать ненужной траты ресурсов на
+преобразование данных в нужный вид. Структурированные логи мы
+рассмотрим на примере сервиса post.
+
+4.1. Запуск контейнеров из logging-enabled
+образов
+Сделайте так, чтобы с помощью файла docker-compose.yml
+брались образы с тэгом logging.
+Запустите сервисы приложения и Выполните команду для просмотра
+логов post сервиса:
+cd docker && docker-compose up -d
+docker-compose logs -f post
+⚠
+Внимание!
+Среди
+логов
+можно
+наблюдать
+проблемы
+с
+доступностью Zipkin, у нас он пока что и правда не установлен.
+Ошибки можно игнорировать. ( Github issue )
+
+Просмотр логов контейнеров
+Откройте приложение в браузере и создайте несколько постов,
+пронаблюдайте, как пишутся логи post серсиса в терминале
+docker/ $ docker-compose logs -f post
+Attaching to reddit_post_1
+post_1
+| {"event": "find_all_posts", "level": "info", "message": "Successfully retrieved all posts from the database", "params": {},
+"request_id": "17501ae3-3d4f-4fe6-ac99-ca7cb58492a9", "service": "post", "timestamp": "2017-12-10 23:36:59"}
+post_1
+| {"addr": "172.21.0.7", "event": "request", "level": "info", "method": "GET", "path": "/posts?", "request_id": "17501ae3-3d4f-4fe6-
+ac99-ca7cb58492a9", "response_status": 200, "service": "post", "timestamp": "2017-12-10 23:36:59"}
+post_1
+| {"event": "post_create", "level": "info", "message": "Successfully created a new post", "params": {"link":
+"https://github.com/hynek/structlog", "title": "Structlog is awesome! "}, "request_id": "2aaf1ad3-42cf-4105-b585-d990eb22d85b", "service": "post",
+"timestamp": "2017-12-10 23:37:18"}
+Каждое событие, связанное с работой нашего приложения логируется в
+JSON-формате и имеет нужную нам структуру: тип события (event),
+сообщение (message), переданные функции параметры (params), имя
+сервиса (service) и др.
+Избавляем бизнес от ИТ-зависимости
+
+4.3. Настройка отправки логов во Fluentd
+для сервиса post
+Как
+отмечалось
+на
+лекции,
+по
+умолчанию
+Docker-контейнерами
+используется json-file драйвер для логирования информации, которая
+пишется сервисом внутри контейнера в stdout (и stderr). Для отправки логов
+во Fluentd используем docker-драйвер fluentd .
+Определите драйвер для логирования для сервиса post внутри файла
+docker/docker-compose.yml ( ссылка на gist ):
+
+version: '3'
+services:
+  post:
+    image: ${USER_NAME}/post
+    environment:
+      - POST_DATABASE_HOST=post_db
+      - POST_DATABASE=posts
+    depends_on:
+      - post_db
+    ports:
+      - "5000:5000"
+    logging:
+      driver: "fluentd"
+      options:
+        fluentd-address: localhost:24224
+        tag: service.post
+
+4.4. Запуск системы логирования
+Поднимите инфраструктуру централизованной системы логирования и
+перезапустим сервисы приложения:
+$ docker-compose -f docker-compose-logging.yml up -d
+Creating kitit_kibana_1        ... done
+Creating kitit_fluentd_1       ... done
+Creating kitit_elasticsearch_1 ... done
+$ docker-compose down
+$ docker-compose up -d
+Создадим несколько постов в приложении:
+OK
+
+Визуализация
+5.1. Создание индекса в Kibana
+Kibana - инструмент для визуализации и анализа логов от компании
+Elastic. Откройте Web-интерфейс Kibana для просмотра собранных в
+ElasticSearch логов Post-сервиса (Kibana слушает на порту 5601).
+Некоторое время браузер может показывать уведомление "Kibana is not
+ready yet" - это нормально.
+Разнообразные Getting Started, меняющиеся от версии к версии, можно
+скипнуть.
+Интерфейс Kibana может значительно поменяться с новой версией.
+
+Найдите элемент панели Discover и нажмите на него:
+При первом запуске интерфейс обычно сам предложит настроить
+индекс. Если этого не произошло, выберите Index Pattern -> Create Index
+Pattern. В поле Index Pattern введите fluentd-* .
+OK
+
+Далее укажите поле для Time filter:
+OK
+
+Вернитесь на вкладку Discovery и посмотрите на получившийся график.
+Он показывает, сколько лог-сообщений было получено в момент времени.
+Теперь логи контейнера post хранятся централизованно:
+
+5.3. Поиск по полям в Kibana
+Обратите внимание на поля. Их можно использовать для поиска
+сообщений по определённому критерию.
+
+Язык запросов Kibana называется KQL .
+Сконструируем
+простой
+запрос
+по
+части
+имени
+контейнера:
+container_name : *post*
+
+Фильтры
+Заметим, что поле log содержит в себе JSON-объект, который содержит
+много интересной нам информации.
+Нам хотелось бы выделить эту информацию в поля, чтобы иметь
+возможность производить по ним поиск. Например, для того чтобы найти
+все сообщения, связанные с определенным событием (event) или
+конкретным сервисом (service).
+Мы можем достичь этого за счет использования фильтров для
+выделения нужной информации.
+
+6.1. Добавление фильтра во Fluentd для
+сервиса post
+Добавьте фильтр для парсинга json-логов, приходящих от сервиса post, в
+logging/fluentd/fluent.conf:
+<filter service.post>
+  @type parser
+  format json
+  key_name log
+</filter>
+
+6.2. Перезапуск Fluentd
+Пересоберите образ и перезапустите сервис Fluentd:
+logging/fluentd $ docker build -t kitit/fluentd .
+docker $ docker-compose -f docker-compose-logging.yml up -d fluentd
+Создадим пару новых постов, чтобы проверить парсинг логов:
+
+6.3. Просмотр структурированных логов (продолжение)
+Раскройте одно из сообщений и убедитесь, что вместо одного поля log
+появилось множество новых полей, которые раньше были в JSON в поле
+log.
+
+6.4. Поиск по структурированным логам
+Выполните, для примера, поиск по событию создания нового поста. KQL-
+запрос: event: post_create :
+event:
+    post_create
+level:
+    info
+message:
+    Successfully created a new post
+params.link:
+    http://178.154.240.85:9292/new
+params.title:
+    sdgdsgdsgdsg
+request_id:
+    6e8fdbfb-ea54-482d-9d70-b1d390d7481f
+service:
+    post
+timestamp:
+    2021-07-18 11:19:37
+@timestamp:
+    Jul 18, 2021 @ 14:19:37.000
+@log_name:
+    service.post
+_id:
+    s9tXuXoBUV0jVdg80lKX
+_type:
+    access_log
+_index:
+    fluentd-20210718
+_score:
+    -
+
+Сбор
+неструктурированных
+логов
+
+Неструктурированные логи
+Неструктурированные логи отличаются отсутствием четкой структуры
+данных. Также часто бывает, что формат лог-сообщений не подстроен под
+систему централизованного логирования, что существенно увеличивает
+затраты вычислительных и временных ресурсов на обработку данных и
+выделение нужной информации.
+На примере сервиса ui мы рассмотрим пример логов с неудобным
+форматом сообщений.
+
+7.1. Настройка отправки логов во Fluentd для
+сервиса ui
+По аналогии с сервисом post, определим для сервиса ui драйвер для
+логирования fluentd в docker/docker-compose.yml:
+ui:
+...
+logging:
+driver: "fluentd"
+options:
+fluentd-address: localhost:24224
+tag: service.ui
+...
+
+7.2. Перезапуск сервиса ui
+Перезапустите ui:
+docker $ docker-compose stop ui
+docker $ docker-compose rm ui
+docker $ docker-compose up -d
+Произведите какие-нибудь действия на странице приложения reddit, а
+затем вернитесь в Kibana и поменяйте запрос на
+container_name :
+*ui* . Видно, что общая структура у поля log в сообщениях от этого
+сервиса отсутствует.
+
+Когда приложение или сервис не пишет структурированные логи,
+приходится использовать старые добрые регулярные выражения для их
+парсинга в /docker/fluentd/fluent.conf.
+Следующее регулярное выражение нужно, чтобы успешно выделить
+интересующую нас информацию из лога сервиса ui в поля ( gist ):
+
+source>
+  @type forward
+  port 24224
+  bind 0.0.0.0
+</source>
+
+<filter service.post>
+  @type parser
+  format json
+  key_name log
+</filter>
+
+<filter service.ui>
+  @type parser
+  format /\[(?<time>[^\]]*)\]  (?<level>\S+) (?<user>\S+)[\W]*service=(?<service>\S+)[\W]*event=(?<event>\S+)[\W]*(?:path=(?<path>\S+)[\W]*)?request_id=(?<request_id>\S+)[\W]*(?:remote_addr=(?<remote_addr>\S+)[\W]*)?(?:method= (?<method>\S+)[\W]*)?(?:response_status=(?<response_status>\S+)[\W]*)?(?:message='(?<message>[^\']*)[\W]*)?/
+  key_name log
+</filter>
+
+
+<match *.**>
+  @type copy
+  <store>
+    @type elasticsearch
+    host elasticsearch
+    port 9200
+    logstash_format true
+    logstash_prefix fluentd
+    logstash_dateformat %Y%m%d
+    include_tag_key true
+    type_name access_log
+    tag_key @log_name
+    flush_interval 1s
+  </store>
+  <store>
+    @type stdout
+  </store>
+</match>
+
+7.4. Перезапуск Fluentd
+Пересоберите образ и перезапустите сервис Fluentd:
+logging/fluentd $ docker build -t $USER_NAME/fluentd .
+docker $ docker-compose -f docker-compose-logging.yml up -d fluentd
+Recreating kitit_fluentd_1 ... done
+Снова сымитируйте какую-нибудь активность на странице нашего
+приложения.
+
+В Kibana, сделайте поиск по: @log_name: service.ui
+Теперь наши логи как следует распарсены:
+
+8.1. Grok-шаблоны
+Созданные регулярки могут иметь ошибки, их сложно менять и ещё сложнее - читать без
+применения инструментов навроде этого https://regex101.com/.
+Для облегчения задачи парсинга вместо
+стандартных регулярок можно использовать grok-шаблоны. По-сути grok'и - это именованные
+шаблоны регулярных выражений (очень похоже на функции). Можно использовать готовый
+regexp, просто сославшись на него как на функцию.
+Добавьте следующий шаблон в конфигурацию Fluentd, убрав шаблон с регулярками.
+Ребилдните новый образ Fluentd и перезапустите через docker-compose:
+...
+<filter service.ui>
+  @type parser
+  format grok
+  grok_pattern %{RUBY_LOGGER}
+  key_name log
+</filter>
+...
+
+8.1. Grok-шаблоны
+Созданные регулярки могут иметь ошибки, их сложно менять и ещё сложнее - читать без
+применения инструментов навроде этого . Для облегчения задачи парсинга вместо
+стандартных регулярок можно использовать grok-шаблоны. По-сути grok'и - это именованные
+шаблоны регулярных выражений (очень похоже на функции). Можно использовать готовый
+regexp, просто сославшись на него как на функцию.
+Добавьте следующий шаблон в конфигурацию Fluentd, убрав шаблон с регулярками.
+Ребилдните новый образ Fluentd и перезапустите через docker-compose:
+%{RUBY_LOGGER} [(?<timestamp>(?>\d\d){1,2}-(?:0?[1-9]|1[0-2])-(?:(?:0[1-9])|(?:[12][0-9])|(?:3[01])|[1-9])[T ]
+(?:2[0123]|[01]?[0-9]):?(?:[0-5][0-9])(?::?(?:(?:[0-5]?[0-9]|60)(?:[:.,][0-9]+)?))?(?:Z|[+-](?:2[0123]|[01]?[0-9])
+(?::?(?:[0-5][0-9])))?) #(?<pid>\b(?:[1-9][0-9]*)\b)\] *(?<loglevel>(?:DEBUG|FATAL|ERROR|WARN|INFO)) -- +(?
+<progname>.*?): (?<message>.*)
+
+8.3.* Разбор ещё одного формата логов (по
+желанию)
+Ещё один формат лога остался неразобранным:
+Составьте конфигурацию Fluentd так, чтобы разбирались оба формата
+логов UI-сервиса (тот, что сделали до этого, и текущий) одновременно.
+
+<filter service.ui>
+  @type parser
+  format grok
+  <grok>
+    pattern service=%{WORD:service} \| event=%{WORD:event} \| request_id=%{GREEDYDATA:request_id} \| message='%{GREEDYDATA:message}'
+  </grok>
+  <grok>
+    pattern service=%{WORD:service} \| event=%{WORD:event} \| path=%{URIPATH:path} \| request_id=%{GREEDYDATA:request_id} \| remote_addr=%{IP:remote_addr} \| method= %{WORD:message} \| response_status=%{INT:response_status}
+  </grok>
+  key_name message
+  reserve_data true
+</filter>
+
+Распределенный
+трейсинг
+9.1. Добавление Zipkin в систему
+логирования
+Добавьте
+в
+compose-файл
+для
+сервисов
+логирования
+сервис
+распределенного трейсинга Zipkin ( gist ):
+  zipkin:
+    image: openzipkin/zipkin:2.21.0
+    ports:
+      - "9411:9411"
+...
+
+9.2. Включение Zipkin
+Добавьте для каждого сервиса в нашем приложении reddit параметр
+ZIPKIN_ENABLED (docker-compose.yml):
+environment:
+- ZIPKIN_ENABLED=${ZIPKIN_ENABLED}
+В .env-файле укажите:
+ZIPKIN_ENABLED=true
+docker-compose up -d
+Избавляем бизнес от ИТ-зависимости
+53 / 619.3. Подключение Zipkin к кастомным сетям
+Zipkin должен быть в одной сети с приложениями, поэтому, если вы
+выполняли задание на создание сетей для backend и frontend, вам нужно
+объявить эти сети в docker-compose-logging.yml и добавить в них Zipkin
+похожим образом. Пример:
+services:
+zipkin:
+image: openzipkin/zipkin
+ports:
+- "9411:9411"
+networks:
+- front_net
+- back_net
+...
+networks:
+back_net:
+front_net:
+Избавляем бизнес от ИТ-зависимости
+54 / 619.4. Переподнятие инфраструктуры
+логирования
+С
+помощью
+docker-compose
+поднимите
+изменённую
+систему
+логирования:
+$ docker-compose -f docker-compose-logging.yml -f docker-compose.yml down
+$ docker-compose -f docker-compose-logging.yml -f docker-compose.yml up -d
+Creating kitit_fluentd_1       ... done
+Creating kitit_kibana_1        ... done
+Creating kitit_elasticsearch_1 ... done
+Creating kitit_post_db_1       ... done
+Creating kitit_zipkin_1        ... done
+Creating kitit_comment_1       ... done
+Creating kitit_post_1          ... done
+Creating kitit_ui_1            ... done
+
+9.5. Просмотр трейсов в Zipkin
+Откройте web-интерфейс Zipkin на порту 9411. Пока вы не найдёте
+никаких трейсов, т.к. никаких запросов нашему приложению еще не
+поступало.
+
+Нажмите на один из трейсов, чтобы посмотреть, как запрос шел через
+нашу систему микросервисов и каково общее время обработки запроса у
+нашего приложения при запросе главной страницы:
+
+Видно, что первым делом наш запрос попал к сервису ui, который смог
+обработать наш запрос за суммарное время, равное 73.475 ms.
+Из этих 73.475 ms ушло 20.051 ms на то, чтобы ui мог направить запрос
+сервису post по пути /posts и получить от него ответ в виде списка постов.
+Синие полоски со временем называются span и представляют собой
+одну операцию, которая произошла при обработке запроса. Набор span'ов
+- это и есть трейс. Суммарное время обработки нашего запроса равно
+верхнему
+span'у,
+который
+включает
+в
+себя
+время
+всех
+span'ов,
+расположенных под ним.
+
+С нашим приложением происходит что-то странное. Пользователи
+жалуются, что при нажатии на пост они вынуждены долго ждать, пока у них
+загрузится страница с постом. Жалоб на загрузку других страниц не
+поступало. Нужно выяснить, в чем проблема, используя Zipkin.
+Код приложения с багом отличается от используемого ранее в этом ДЗ и
+доступен в репозитории со сломанным кодом приложения. Т.е. необходимо
+сбилдить багнутую версию приложения и запустить Zipkin для неё.
+Описание проблемы нужно добавить в PR.
+
+Отправка ДЗ на проверку
+Результаты
+вашей
+работы
+находятся
+в
+ветке
+logging-1
+вашего
+инфраструктурного репозитория.
+В README внесите описание того, что сделано
+Создайте Pull Request к ветке master (описание PR нужно заполнять,
+включая инструкции по запуску сделанного)
+В ревьюверы можно никого не добавлять
+Добавьте метку (label) logging-1 к вашему Pull Request
+После того, как один из преподавателей сделает approve пулл-реквеста,
+ветку с ДЗ можно смерджить и закрыть PR.
