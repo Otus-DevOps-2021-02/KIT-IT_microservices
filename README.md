@@ -2733,7 +2733,7 @@ and service account keys on each node and then running the following as root:
 Then you can join any number of worker nodes by running the following on each as root:
 
 kubeadm join 178.154.241.60:6443 --token y3ihro.e76jxcmidu2zx7u7 \
-        --discovery-token-ca-cert-hash sha256:07034c4add9bf1be8ed23a538c5b02da6e7225267a07e86ea5964d7a5d2683de
+        --discovery-token-ca-cert-hash sha256:07034c4add9bf1be8ed23a538c5b02da6e7225267a07e86ea5964d7a5d2683de1
 
 NAME         STATUS   ROLES                  AGE   VERSION
 kubernode1   Ready    control-plane,master   17m   v1.21.3
