@@ -695,3 +695,342 @@ Apllication is working!
 
 Для задания имя проекта воспользовался ссылкой на stackoverflow.
 https://stackoverflow.com/questions/44924082/set-project-name-in-docker-compose-file
+-----------------------
+HW gitlab-ci-1
+-----------------------
+Устройство Gitlab CI. Построение процесса непрерывной поставки
+1. Создание новой ветки
+Создайте новую ветку в вашем репозитории для выполнения данного ДЗ
+и назовите ветку gitlab-ci-1
+Проверка этого ДЗ производится через подтверждение пулл-реквеста
+одним из преподавателей. После аппрува ветку можно будет смержить
+
+Цель задания
+Подготовить инсталляцию Gitlab CI
+Подготовить репозиторий с кодом приложения
+Описать для приложения этапы пайплайна
+Определить окружения
+
+Инсталляция Gitlab CI
+Для выполнения этого ДЗ нам потребуется развернуть свой Gitlab CI с
+помощью Docker.
+CI-сервис является одним из ключевых инфраструктурных сервисов в
+процессе выпуска ПО, и к его доступности, бесперебойной работе и
+безопасности должны предъявляться повышенные требования.
+Мы же в лабораторных целях упростим процедуру установки и
+настройки.
+
+Новая ВМ помощнее
+Gitlab CI состоит из множества компонентов и выполняет
+ресурсозатратную работу, например, компиляцию приложений.
+Нам потребуется создать в Yandex.Cloud новую виртуальную машину со
+следующими параметрами:
+1 CPU
+4 GB RAM
+50 GB HDD
+Ubuntu 18.04
+В официальной документации https://docs.gitlab.com/ce/install/requirements.html описаны рекомендуемые характеристики сервера.
+
+Для создания сервера вы можете использовать любой из удобных вам способов:
+Веб-консоль Yandex.Cloud
+Terraform
+Yandex.Cloud CLI
+Docker-machine
+
+yc compute instance list
+
+yc compute instance create \
+  --name docker-host2 \
+  --zone ru-central1-a \
+  --network-interface subnet-name=default-ru-central1-a,nat-ip-version=ipv4 \
+  --create-boot-disk image-folder-id=standard-images,image-family=ubuntu-1804-lts,size=50 \
+  --memory 4 \
+  --ssh-key ~/.ssh/id_rsa.pub
+
+- index: "0"
+  mac_address: d0:0d:46:35:12:cb
+  subnet_id: e9b4uf3p0hsf3ck1glap
+  primary_v4_address:
+    address: 10.128.0.19
+    one_to_one_nat:
+      address: 178.154.241.231
+      ip_version: IPV4
+
+docker-machine create \
+  --driver generic \
+  --generic-ip-address=178.154.241.231\
+  --generic-ssh-user yc-user \
+  --generic-ssh-key ~/.ssh/id_rsa \
+  docker-host2
+
+eval $(docker-machine env docker-host2)
+
+Omnibus
+Для запуска Gitlab CI мы будем использовать omnibus-установку. У этого
+подхода есть как свои плюсы, так и минусы.
+Основной плюс для нас в том, что мы можем быстро запустить сервис и
+сконцентрироваться на процессе непрерывной поставки.
+Минусом такого типа установки является то, что такую инсталяцию
+тяжелее эксплуатировать и дорабатывать, но долговременная эксплуатация
+этого сервиса не входит в наши цели.
+Более подробно об этом в https://docs.gitlab.com/ce/install/requirements.html
+
+2.2. Установка Docker
+На нашем новом сервере для Gitlab CI должен каким-то образом
+появиться Docker.
+Вы уже знаете, как установить Docker на сервер:
+Вручную
+С помощью docker-machine
+С помощью Ansible (плейбук или готовая роль)
+Если остановились на ручной установке, то инструкции для Ubuntu
+можно найти здесь https://docs.docker.com/engine/install/ubuntu/
+
+Помимо всего прочего, нам нужно на новом сервере создать
+необходимые директории и подготовить docker-compose.yml .
+mkdir -p /srv/gitlab/config /srv/gitlab/data /srv/gitlab/logs
+cd /srv/gitlab
+touch docker-compose.yml
+
+sudo mkdir -p /srv/gitlab/config /srv/gitlab/data /srv/gitlab/logs
+
+sudo nano docker-compose.yml
+web:
+  image: 'gitlab/gitlab-ce:latest'
+  restart: always
+  hostname: 'gitlab.example.com'
+  environment:
+    GITLAB_OMNIBUS_CONFIG: |
+      external_url 'http://<YOUR-VM-IP>'
+  ports:
+    - '80:80'
+    - '443:443'
+    - '2222:22'
+  volumes:
+    - '/srv/gitlab/config:/etc/gitlab'
+    - '/srv/gitlab/logs:/var/log/gitlab'
+    - '/srv/gitlab/data:/var/opt/gitlab'
+
+2.5. Запуск контейнера
+Запустите контейнер и подождите, пока скачаются образы и Gitlab CI
+запустится и произведет первичную настройку (около 3-5 минут):
+# В той же директории, где docker-compose.yml ( /srv/gitlab )
+docker-compose up -d
+
+Пока GitLab стартует, можно почитать, откуда мы взяли содержимое
+файла docker-compose.yml :
+https://docs.gitlab.com/omnibus/docker/README.html#install-gitlab-
+using-docker-compose
+
+2.6. Проверка успешности
+Если все прошло успешно, то вы сможете в браузере перейти на
+http://your-vm-ip и увидеть там:
+
+Ни в какую не отдает первоначальную страницу для ввода пароля.
+Пришлось зайти в конейтенер и поменять вручную.
+sudo docker exec -it 564d4905585f bash
+root@gitlab:/# gitlab-rake "gitlab:password:reset"
+Enter username: root
+Enter password:
+Confirm password:
+Password successfully updated for user with username root.
+
+Через
+Settings -> General -> Sign-up restrictions
+отключите возможность
+регистрации, она нам не нужна. Не забудьте сохранять изменения в настройках:
+Отключили.
+
+Вспомните:
+Каждый проект в Gitlab CI принадлежит к группе проектов
+В проекте может быть определен CI/CD-пайплайн
+Задачи ( jobs) в пайплайне должны исполняться на так называемых
+раннерах
+
+Перейдите в соответствующую панель и создайте группу:
+Name - homework
+Description - Projects for my homework
+Visibility - private
+Создали
+
+Создайте проект с именем example :
+Создали
+
+Чтобы использовать репозиторий проекта GitLab, вы должны добавить
+ещё один remote к своему локальному infra-репозиторию:
+git checkout -b gitlab-ci-1
+git remote add gitlab http://178.154.241.231/homework/example.git
+git push gitlab gitlab-ci-1
+
+Добавили .gitlab-ci.yml
+stages:
+  - build
+  - test
+  - deploy
+
+build_job:
+  stage: build
+  script:
+    - echo 'Building'
+
+test_unit_job:
+  stage: test
+  script:
+    - echo 'Testing 1'
+
+test_integration_job:
+  stage: test
+  script:
+    - echo 'Testing 2'
+
+deploy_job:
+  stage: deploy
+  script:
+    - echo 'Deploy'
+
+
+Запушьте изменения:
+git add .gitlab-ci.yml
+git commit -m 'add pipeline definition'
+git push gitlab gitlab-ci-1
+
+Агга, добавлял один файл, запушил весь проект целиков с предыдушими домашками, ну ладн.
+
+Теперь, если перейти в раздел
+CI/CD -> Pipelines , вы увидите, что пайплайн
+попытался запуститься, но находится в статусе pending или stuck , так как у нас пока нет
+раннеров.
+Нужно создать и зарегистрировать раннер.
+Для регистрации нужен токен. Увидеть его можно в настройках проекта:
+Settings -> CI/CD -> Pipelines ->
+Runners и посмотреть на секцию Set up a specific Runner manually :
+
+
+Set up a specific runner manually
+    Install GitLab Runner and ensure it's running.
+    Register the runner with this URL:
+    http://178.154.241.231/
+And this registration token:
+LyptE-L2ZXMuznNBv7_7
+
+На сервере, где работает Gitlab CI, выполните команду:
+docker run -d --name gitlab-runner --restart always -v /srv/gitlab-runner/config:/etc/gitlab-runner -v /var/run/docker.sock:/var/run/docker.sock gitlab/gitlab-runner:latest
+
+После запуска раннер нужно зарегистрировать. На сервере, где
+работает Gitlab CI, выполните команду, подставив свои IP и токен:
+docker exec -it gitlab-runner gitlab-runner register \
+--url http://178.154.241.231/ \
+--non-interactive \
+--locked=false \
+--name DockerRunner \
+--executor docker \
+--docker-image alpine:latest \
+--registration-token LyptE-L2ZXMuznNBv7_7 \
+--tag-list "linux,xenial,ubuntu,docker" \
+--run-untagged
+Registering runner... succeeded                     runner=LyptE-L2
+Runner registered successfully. Feel free to start it, but if it's running already the config should be automatically reloaded!
+
+Опции и их значения можно подсмотреть так:
+docker exec -it gitlab-runner gitlab-runner register --help
+
+Если все получилось, то в настройках вы увидите новый раннер:
+#1 (PU5g7P9L)
+DockerRunner
+
+После добавления раннера пайплайн должен был запуститься:
+Да, в статусе Passed.
+
+Добавьте исходный код reddit в репозиторий:
+git clone https://github.com/express42/reddit.git && rm -rf ./reddit/.git
+git add reddit/
+git commit -m "Add reddit app"
+git push gitlab gitlab-ci-1
+
+Измените описание пайплайна в .gitlab-ci.yml :
+
+image: ruby:2.4.2
+stages:
+...
+variables:
+DATABASE_URL: 'mongodb://mongo/user_posts'
+before_script:
+- cd reddit
+- bundle install
+...
+test_unit_job:
+stage: test
+services:
+- mongo:latest
+script:
+- ruby simpletest.rb
+
+В описании pipeline вы добавили вызов теста в файле simpletest.rb .
+Нужно создать его в папке reddit
+require_relative './app'
+require 'test/unit'
+require 'rack/test'
+
+set :environment, :test
+
+class MyAppTest < Test::Unit::TestCase
+  include Rack::Test::Methods
+
+  def app
+    Sinatra::Application
+  end
+
+  def test_get_request
+    get '/'
+    assert last_response.ok?
+  end
+end
+
+Последним шагом вам нужно добавить библиотеку
+rack-test для
+тестирования в файл reddit/Gemfile :
+gem 'rack-test'
+
+Запушьте код в GitLab. Убедитесь, что теперь test_unit_job гоняет
+тесты:
+Гоняет успешно, но были ошибки при билде boundle not found Убрал команду boundle install.
+
+В пайплайне мы создали задачу ( job) с названием deploy_job , но не
+определили, что и куда будет задеплоено.
+Изменим пайплайн таким образом, чтобы  deploy_job стал
+определением окружения dev, на которое условно будет выкатываться
+каждое изменение в коде проекта.
+После изменения файла .gitlab-ci.yml не забывайте зафиксировать изменение в git и
+отправить изменения на сервер (git commit
+и git push gitlab gitlab-ci-1).
+
+Тут понятно. Все увидели.
+
+Staging и Production
+Если на dev мы можем выкатывать последнюю версию кода, то к
+окружению production это может быть неприменимо, если, конечно, вы не
+стремитесь к continiuos deployment.
+Давайте определим два новых этапа: stage и production. Первый будет
+содержать задачу, имитирующую выкатку на окружение staging, второй - на
+production.
+Определим эти задачи таким образом, чтобы они запускались вручную,
+с помощью аргумента when: manual
+
+Условия и ограничения
+Обычно на production выводится приложение с явно зафиксированной
+версией (например, 2.4.10).
+Добавим в описание пайплайна директиву, которая не позволит нам
+выкатить на staging и production код, не помеченный с помощью тэга в git.
+
+Изменения без указания тэга запустят пайплайн без задач staging и
+production.
+Изменение, помеченное тэгом в git, запустит полный пайплайн.
+git commit -am '#4 add logout button to profile page'
+git tag 2.4.10
+git push gitlab gitlab-ci-1 --tags
+
+Gitlab CI позволяет определить динамические окружения. Эта мощная
+функциональность позволяет вам иметь выделенный стенд для, например,
+каждой feature-ветки в git.
+Определяются динамические окружения с помощь переменных, доступных в .gitlab-ci.yml .
+
+Создал пару веток. Все получилось. Очень понравился гитлаб. Делал с удовольствием. Спасибо.
