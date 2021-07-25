@@ -40,55 +40,8 @@ services:
     depends_on:
       - post_db
 
-  prometheus:
-    image: ${USERNAME_DOCKERHUB}/prometheus
-    ports:
-      - '9090:9090'
-    volumes:
-      - prometheus_data:/prometheus
-    command: # Передаем доп параметры в командной строке
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--storage.tsdb.retention=1d' # Задаем время хранения метрик в 1 день
-    networks:
-      - back-network
-      - front-network
-
-  node-exporter:
-    image: prom/node-exporter:v0.15.2
-    user: root
-    volumes:
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /:/rootfs:ro
-    command:
-      - '--path.procfs=/host/proc'
-      - '--path.sysfs=/host/sys'
-      - '--collector.filesystem.ignored-mount-points="^/(sys|proc|dev|host|etc)($$|/)"'
-    networks:
-      - back-network
-      - front-network
-    depends_on:
-      - post_db
-
-  mongodb_exporter:
-    image: ${USERNAME_DOCKERHUB}/mongodb_exporter
-    command:
-      - '--collect.database'
-      - '--collect.collection'
-      - '--collect.topmetrics'
-      - '--collect.indexusage'
-      - '--collect.connpoolstats'
-      - '--mongodb.uri=mongodb://mongo_db:27017'
-    networks:
-      - back-network
-      - front-network
-    depends_on:
-      - post_db
-
 volumes:
   post_db:
-  prometheus_data:
 
 networks:
   back-network:
