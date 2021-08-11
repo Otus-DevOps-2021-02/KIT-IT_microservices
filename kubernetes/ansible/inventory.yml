@@ -1,0 +1,12 @@
+---
+  master:
+    hosts:
+      master:
+        ansible_host: 217.28.229.80
+
+
+
+  workers:
+    hosts:
+      worker:
+        ansible_host: 217.28.230.240

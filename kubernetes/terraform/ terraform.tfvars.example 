@@ -1,0 +1,8 @@
+service_account_key_file = "./key.json"
+token                    = "blablabla"
+cloud_id                 = "blablabla"
+folder_id                = "blablabla"
+zone                     = "blablabla"
+image_id                 = "blablabla"
+subnet_id                = "blablabla"
+private_key              = "./appuser"
