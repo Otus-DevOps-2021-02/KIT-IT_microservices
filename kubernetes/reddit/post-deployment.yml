@@ -20,7 +20,7 @@ spec:
         component: post
     spec:
       containers:
-      - image: kvaido/post:2.0
+      - image: kirillkotovsky/post
         name: post
         env:
         - name: POST_DATABASE_HOST
